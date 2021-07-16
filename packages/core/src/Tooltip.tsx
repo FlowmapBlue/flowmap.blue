@@ -2,19 +2,14 @@ import * as React from 'react';
 import { Popper } from 'react-popper';
 import { Placement } from 'popper.js';
 import styled from '@emotion/styled';
+import { Props } from '@flowmap.gl/core';
+import { TargetBounds, TooltipProps } from '@flowmap.blue/data';
 
-export type TargetBounds = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
-
-export interface Props {
-  target: TargetBounds;
-  placement?: Placement;
-  content: React.ReactNode;
-}
+// export interface Props {
+//   target: TargetBounds;
+//   placement?: Placement;
+//   content: React.ReactNode;
+// }
 
 class VirtualReference {
   target: TargetBounds;
@@ -48,8 +43,8 @@ const ContentWrapper = styled.div`
   padding: 7px;
 `;
 
-const Tooltip = ({ target, content, placement }: Props) => (
-  <Popper placement={placement} referenceElement={new VirtualReference(target)}>
+const Tooltip = ({ target, content, placement }: TooltipProps) => (
+  <Popper placement={placement as Placement} referenceElement={new VirtualReference(target)}>
     {({ ref, style, placement, arrowProps }) => (
       <ContentWrapper ref={ref} style={style} data-placement={placement}>
         {content}

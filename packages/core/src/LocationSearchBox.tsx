@@ -5,10 +5,9 @@ import React from 'react';
 import { defaultMemoize } from 'reselect';
 import { matchesSearchQuery } from './matchesSearchQuery';
 import SearchBox from './SearchBox';
-import { Location } from './types';
+import { Location, LocationFilterMode } from '@flowmap.blue/data';
 import styled from '@emotion/styled';
 import { Cluster } from '@flowmap.gl/cluster';
-import { LocationFilterMode } from './FlowMap.state';
 
 export interface Props {
   selectedLocations: string[] | undefined;
@@ -67,7 +66,7 @@ function getLocationsBySelectionStatus(
   }
 
   const { selected, unselected } = nest<Location | Cluster, LocationsBySelectionStatus>()
-    .key(location => (selectedIds.has(location.id) ? 'selected' : 'unselected'))
+    .key((location) => (selectedIds.has(location.id) ? 'selected' : 'unselected'))
     .object(locations);
 
   return {
@@ -140,7 +139,7 @@ class LocationsSearchBox extends React.PureComponent<Props> {
 
   private tagRenderer = (location: Location | Cluster) => {
     const { selectedLocations } = this.props;
-    const selection = selectedLocations && selectedLocations.find(id => id === location.id);
+    const selection = selectedLocations && selectedLocations.find((id) => id === location.id);
     if (!selection) {
       return null;
     }

@@ -3,30 +3,27 @@
   "scripts": {
     "start": "cd packages/app && yarn start",
     "build:core": "cd packages/core && yarn build",
+    "build:data": "cd packages/data && yarn build",
     "build:core:esm": "cd packages/core && yarn build:esm",
-    "build:app": "yarn build:core:esm && cd packages/app && yarn build",
+    "build:app": "yarn build:data && yarn build:core:esm && cd packages/app && yarn build",
+    "dev:data": "cd packages/data && yarn dev",
     "dev:core": "cd packages/core && yarn dev",
     "dev:app": "cd packages/app && yarn dev",
     "shots": "cd packages/app && yarn shots",
-    "dev": "npm run dev:core & npm run dev:app",
-    "build": "yarn build:core && yarn build:app",
+    "dev": "yarn dev:data & yarn dev:core & yarn dev:app",
+    "build": "yarn build:data && yarn build:core && yarn build:app",
     "version-bump": "lerna version --no-push --force-publish",
     "publish-prerelease": "lerna publish --dist-tag next from-package",
     "lint": "tslint --fix '{packages/*}/{src}/**/*.{ts,tsx}'",
-    "typecheck": "lerna run --stream typecheck"
+    "typecheck": "lerna run --stream typecheck",
+    "prepare": "husky install"
   },
   "workspaces": [
     "packages/*"
   ],
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged"
-    }
-  },
   "lint-staged": {
-    "src/**/*.{js,jsx,ts,tsx,json,css,scss,md}": [
-      "prettier --write",
-      "git add"
+    "packages/**/src/**/*.{js,jsx,ts,tsx,json,css,scss,md}": [
+      "prettier --write"
     ]
   },
   "prettier": {
@@ -35,5 +32,9 @@
     "semi": true,
     "singleQuote": true,
     "printWidth": 100
+  },
+  "devDependencies": {
+    "husky": "^7.0.0",
+    "lint-staged": "^11.0.0"
   }
 }

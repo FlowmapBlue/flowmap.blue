@@ -1,7 +1,7 @@
 {
-  "name": "@flowmap.blue/core",
+  "name": "@flowmap.blue/widget",
   "version": "0.0.1-alpha.2",
-  "description": "Flowmap.blue core package",
+  "description": "Flowmap.blue widget package",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,8 +12,10 @@
   ],
   "scripts": {
     "dev": "tsc --watch --project tsconfig.json",
+    "dev:umd": "node -r dotenv/config ../../node_modules/.bin/webpack-dev-server --config ./webpack.config.umd.js --progress --mode=development --hot --env.dev dotenv_config_path=../../.env",
     "build:esm": "rm -rf dist && tsc --project tsconfig.json",
-    "build": "yarn build:esm",
+    "build:umd": "rm -rf dist-umd && node -r dotenv/config ../../node_modules/.bin/webpack --config ./webpack.config.umd.js --progress --mode=production --env.prod dotenv_config_path=../../.env",
+    "build": "yarn build:esm && yarn build:umd",
     "typecheck": "tsc --noEmit",
     "prepare": "yarn build"
   },
@@ -103,8 +105,14 @@
     "@types/react": "^16.9.38",
     "@types/react-dom": "^16.9.8",
     "@types/seedrandom": "^2.4.28",
+    "css-loader": "^4.3.0",
+    "file-loader": "^6.0.0",
+    "html-webpack-plugin": "^4.3.0",
     "react": "^16.13.1",
-    "react-dom": "^16.13.1"
+    "react-dom": "^16.13.1",
+    "style-loader": "^1.2.1",
+    "ts-loader": "^8.0.3",
+    "webpack-cli": "^3.3.12"
   },
   "publishConfig": {
     "access": "public"

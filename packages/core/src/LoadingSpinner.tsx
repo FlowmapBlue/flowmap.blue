@@ -19,29 +19,9 @@ const SpinnerSvg = styled.svg`
 const Loader = () => (
   <Outer>
     <SpinnerSvg width="402px" height="402px" viewBox="0 0 602 602">
-      <g
-        transform="translate(100 100)"
-        stroke="none"
-        strokeWidth={1}
-        fill="none"
-      >
-        <circle
-          stroke="#fff"
-          fill="#fff"
-          opacity={0.5}
-          strokeWidth={0}
-          cx={200}
-          cy={200}
-          r={300}
-        />
-        <circle
-          stroke="#fff"
-          fill="#1A70A7"
-          strokeWidth={0}
-          cx={200}
-          cy={200}
-          r={200}
-        />
+      <g transform="translate(100 100)" stroke="none" strokeWidth={1} fill="none">
+        <circle stroke="#fff" fill="#fff" opacity={0.5} strokeWidth={0} cx={200} cy={200} r={300} />
+        <circle stroke="#fff" fill="#1A70A7" strokeWidth={0} cx={200} cy={200} r={200} />
         <g
           strokeOpacity={0.937273551}
           stroke="#FFF"

@@ -126,6 +126,10 @@ export const TIME_GRANULARITIES: TimeGranularity[] = [
   },
 ];
 
+export function getTimeGranularityByKey(key: TimeGranularityKey) {
+  return TIME_GRANULARITIES.find((s) => s.key === key);
+}
+
 export function getTimeGranularityByOrder(order: number) {
   return TIME_GRANULARITIES.find((s) => s.order === order);
 }

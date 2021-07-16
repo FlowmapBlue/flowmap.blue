@@ -50,7 +50,7 @@ export default class SpreadsheetKeyExtractor extends React.Component<{}, State> 
       <li key="input">
         <span>Copy the link to your spreadsheet and paste it here:</span>
         <StyledInputGroup
-          inputRef={ref => (this.ref = ref)}
+          inputRef={(ref) => (this.ref = ref)}
           leftIcon={IconNames.LINK}
           rightElement={
             invalid ? <InvalidInputIcon /> : spreadsheetKey ? <ValidInputIcon /> : undefined

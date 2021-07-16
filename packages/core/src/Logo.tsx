@@ -1,4 +1,4 @@
-import { ColorScheme } from './colors';
+import { ColorScheme } from '@flowmap.blue/data';
 import { Link } from 'react-router-dom';
 import * as React from 'react';
 import styled from '@emotion/styled';

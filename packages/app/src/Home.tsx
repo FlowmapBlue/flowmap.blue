@@ -391,14 +391,19 @@ const Home = () => (
         </div>
         <ExampleGrid>
           {examples.map(({ key, sheet, name, query }) => (
-            <ExampleGridHoverableLink key={key} to={`/${key}${sheet ? `/${sheet}` : ''}${query ? `?${query}` : ''}`}>
+            <ExampleGridHoverableLink
+              key={key}
+              to={`/${key}${sheet ? `/${sheet}` : ''}${query ? `?${query}` : ''}`}
+            >
               <ExampleImage>
                 <ExampleTitle className="name">{name}</ExampleTitle>
                 <img
                   width={screenshotSizes[0]}
                   height={Math.floor(screenshotSizes[0] / aspectRatio)}
                   alt={name}
-                  src={`/screenshots/${key}${sheet ? `_${sheet}` : ''}__${screenshotSizes[0]}px.jpg`}
+                  src={`/screenshots/${key}${sheet ? `_${sheet}` : ''}__${
+                    screenshotSizes[0]
+                  }px.jpg`}
                   // srcSet={screenshotSizes.map(w => `/screenshots/${key}__${w}px.jpg ${w}w`).join(',')}
                   // sizes={screenshotSizes.map((w, i) =>
                   //   (i < screenshotSizes.length - 1 ? `(max-width: ${w * 2}px) ` : '') + `${w}px`)
@@ -482,7 +487,9 @@ const Home = () => (
           {`The source code of Flowmap.blue `}
           <Away href="https://github.com/FlowmapBlue/flowmap.blue">is freely available</Away>
           {` under the  `}
-          <Away href="https://github.com/FlowmapBlue/flowmap.blue/blob/master/LICENSE">MIT license</Away>
+          <Away href="https://github.com/FlowmapBlue/flowmap.blue/blob/master/LICENSE">
+            MIT license
+          </Away>
           .
         </p>
         <p>

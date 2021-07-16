@@ -12,7 +12,7 @@ const Outer = styled(Column)`
 `;
 
 const StyledTextArea = styled.textarea<{ multiline?: boolean }>(
-  props => `
+  (props) => `
   @media (min-width: 500px) {
      width: 30em;
   }
@@ -73,7 +73,7 @@ const SharePopover: React.FC<{}> = ({ children }) => {
       position={Position.RIGHT_BOTTOM}
       content={
         <Outer spacing={15}>
-          <Tabs selectedTabId={selectedTab} onChange={newTabId => setSelectedTab(`${newTabId}`)}>
+          <Tabs selectedTabId={selectedTab} onChange={(newTabId) => setSelectedTab(`${newTabId}`)}>
             <Tab
               id="url"
               title="Share URL"

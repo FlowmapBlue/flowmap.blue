@@ -1,6 +1,6 @@
 import { css } from '@emotion/core';
 import { Classes, Colors } from '@blueprintjs/core';
-import { ColorScheme } from './colors';
+import { ColorScheme } from '@flowmap.blue/data';
 
 const globalStyles = css`
   @import url('https://fonts.googleapis.com/css?family=Sarabun:400,700');

@@ -10,9 +10,9 @@ import {
 } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import { ItemPredicate, ItemRenderer, MultiSelect } from '@blueprintjs/select';
-import React, {ReactNode} from 'react';
+import React, { ReactNode } from 'react';
 import { defaultMemoize } from 'reselect';
-import { LocationFilterMode } from './FlowMap.state';
+import { LocationFilterMode } from '@flowmap.blue/data';
 import { Column } from './Boxes';
 import { ClassNames } from '@emotion/core';
 
@@ -112,7 +112,7 @@ export default class SearchBox<Item> extends React.PureComponent<Props<Item>, St
                         { value: LocationFilterMode.INCOMING, label: 'Incoming to selected' },
                         { value: LocationFilterMode.OUTGOING, label: 'Outgoing from selected' },
                         { value: LocationFilterMode.BETWEEN, label: 'Between selected' },
-                      ].map(v => (
+                      ].map((v) => (
                         <MenuItem
                           active={locationFilterMode === v.value}
                           icon={
@@ -136,9 +136,7 @@ export default class SearchBox<Item> extends React.PureComponent<Props<Item>, St
               <Button title="Filter mode" icon={IconNames.COG} minimal={true} />
             </Popover>
           </Column>
-        ) : (
-          undefined
-        ),
+        ) : undefined,
     };
 
     return (

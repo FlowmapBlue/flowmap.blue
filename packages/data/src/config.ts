@@ -27,3 +27,13 @@ export function parseNumberConfigProp(value: string | undefined, defaultValue: n
   }
   return defaultValue;
 }
+
+export function getMapboxMapStyle(config: Config, darkMode: boolean) {
+  const configMapStyle = config[ConfigPropName.MAPBOX_MAP_STYLE];
+  if (configMapStyle) {
+    if (darkMode === parseBoolConfigProp(config[ConfigPropName.COLORS_DARK_MODE])) {
+      return configMapStyle;
+    }
+  }
+  return darkMode ? DEFAULT_MAP_STYLE_DARK : DEFAULT_MAP_STYLE_LIGHT;
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@flowmap.blue/data",
+  "version": "0.0.1-alpha.0",
+  "description": "Flowmap.blue data package",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsc --watch --project tsconfig.json",
+    "build:esm": "rm -rf dist && tsc --project tsconfig.json",
+    "build": "yarn build:esm",
+    "typecheck": "tsc --noEmit",
+    "prepare": "yarn build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FlowmapBlue/flowmap.blue.git"
+  },
+  "author": "Ilya Boyandin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/FlowmapBlue/flowmap.blue/issues"
+  },
+  "homepage": "https://github.com/FlowmapBlue/flowmap.blue#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@flowmap.gl/cluster": "^7.3.3",
+    "comlink": "^4.3.0",
+    "d3-collection": "^1.0.7",
+    "d3-time": "^2.0.0",
+    "d3-time-format": "^3.0.0",
+    "kdbush": "^3.0.0"
+  }
+}

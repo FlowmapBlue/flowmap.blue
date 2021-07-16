@@ -1,7 +1,6 @@
 import { IToaster, IToastOptions, IToastProps, Position, Toaster } from '@blueprintjs/core';
 
-export const AppToaster = new class implements IToaster {
-
+export const AppToaster = new (class implements IToaster {
   toaster: IToaster | undefined;
 
   init(container: HTMLElement = document.body) {
@@ -11,7 +10,7 @@ export const AppToaster = new class implements IToaster {
           className: 'toaster',
           position: Position.BOTTOM_RIGHT,
         },
-        container,
+        container
       );
     }
   }
@@ -31,5 +30,4 @@ export const AppToaster = new class implements IToaster {
   show(props: IToastProps, key?: string): string {
     return this.toaster?.show(props, key) || '';
   }
-
-}
+})();

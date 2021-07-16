@@ -2,10 +2,10 @@
   "compilerOptions": {
     "target": "es6",
     "module": "es6",
-    "outDir": "dist",
     "moduleResolution": "node",
     "downlevelIteration": true,
     "esModuleInterop": true,
+    "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
     "skipLibCheck": true,
@@ -14,10 +14,8 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "jsx": "react",
     "lib": [
       "esnext",
-      "dom"
     ]
   },
   "include": [

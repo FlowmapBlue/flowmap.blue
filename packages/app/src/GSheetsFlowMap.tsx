@@ -1,28 +1,38 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
-import sheetFetcher, { makeSheetQueryUrl } from './sheetFetcher';
-import FlowMap, {
+import { useEffect, useMemo, useState } from 'react';
+import {
   AppToaster,
+  Away,
+  Collapsible,
+  Column,
+  Description,
+  LoadingSpinner,
+  MapContainer,
+  Title,
+  TitleBox,
+} from '@flowmap.blue/core';
+import {
   ConfigProp,
   ConfigPropName,
   DEFAULT_CONFIG,
+  FlowMapStore,
+  FlowTotals,
   getFlowsSheets,
-  LoadingSpinner,
-  Location,
-  MapContainer,
-  prepareFlows,
-  Props as FlowMapProps,
-} from '@flowmap.blue/core';
+  LoadingStatus,
+  makeSheetQueryUrl,
+} from '@flowmap.blue/data';
 import { Helmet } from 'react-helmet';
 import sendEvent from './ga';
 import { useAsync } from 'react-use';
 import { csvParse } from 'd3-dsv';
-import { Intent } from '@blueprintjs/core';
+import { Colors, HTMLSelect, Intent } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
-import { compose, withProps } from 'recompose';
 import md5 from 'blueimp-md5';
-import { useHistory } from 'react-router-dom';
-import styled from "@emotion/styled";
+import { Link, useHistory } from 'react-router-dom';
+import styled from '@emotion/styled';
+import FromUrlFlowMap from './FromUrlFlowMap';
+import { useAppStore, useFlowMapStore } from './AppStore';
+import { formatCount } from './globals';
 
 interface Props {
   spreadSheetKey: string;
@@ -34,50 +44,18 @@ const ToastContent = styled.div`
   font-size: 12px;
 `;
 
-const FlowMapWithData = compose<any, any>(
-  sheetFetcher('json')<any>(
-  ({ spreadSheetKey, config, flowsSheet = 'flows' }: FlowMapProps) => ({
-    locationsFetch: {
-      url: makeSheetQueryUrl(spreadSheetKey!, 'locations', 'SELECT A,B,C,D', 'json'),
-      then: (rows: any[]) => ({
-        value: rows.map(
-          ({ id, name, lon, lat }: any) =>
-            ({
-              id: `${id}`,
-              name: name ?? id,
-              lon: +lon,
-              lat: +lat,
-            } as Location)
-        ),
-      }),
-    } as any,
-    flowsFetch: {
-      url: makeSheetQueryUrl(spreadSheetKey!, flowsSheet, 'SELECT *', 'json'),
-      refreshing: true,
-      then: (rows: any[]) => ({
-        value: prepareFlows(rows),
-      }),
-    } as any,
-  })),
-  withProps(
-    (props: any) => ({
-      locationsFetch: {
-        ...props.locationsFetch,
-        loading: props.locationsFetch.pending || props.locationsFetch.refreshing,
-      },
-      flowsFetch: {
-        ...props.flowsFetch,
-        loading: props.flowsFetch.pending || props.flowsFetch.refreshing,
-      },
-    })
-  ),
-)(FlowMap as any);
-
 const getFlowsSheetKey = (name: string) => md5(name).substr(0, 7);
+
+const TotalCount = styled.div<{ darkMode: boolean }>((props) => ({
+  padding: 5,
+  borderRadius: 5,
+  backgroundColor: props.darkMode ? Colors.DARK_GRAY4 : Colors.LIGHT_GRAY4,
+  textAlign: 'center',
+}));
 
 const GSheetsFlowMap: React.FC<Props> = ({ spreadSheetKey, flowsSheetKey, embed }) => {
   const url = makeSheetQueryUrl(spreadSheetKey, 'properties', 'SELECT A,B', 'csv');
-  const [flowsSheet, setFlowsSheet] = useState<string>();
+  const [selectedSheet, setSelectedSheet] = useState<string>('flows');
   const history = useHistory();
 
   const handleChangeFlowsSheet = (name: string, replaceUrl: boolean) => {
@@ -87,8 +65,8 @@ const GSheetsFlowMap: React.FC<Props> = ({ spreadSheetKey, flowsSheetKey, embed 
         pathname: `/${spreadSheetKey}/${getFlowsSheetKey(name)}${embed ? '/embed' : ''}`,
       });
     }
-    setFlowsSheet(name);
-  }
+    setSelectedSheet(name);
+  };
 
   const configFetch = useAsync(async () => {
     const response = await fetch(url);
@@ -109,7 +87,7 @@ const GSheetsFlowMap: React.FC<Props> = ({ spreadSheetKey, flowsSheetKey, embed 
     if (flowsSheets && flowsSheets.length > 0) {
       let name = undefined;
       if (flowsSheetKey) {
-        name = flowsSheets.find(fs => getFlowsSheetKey(fs) === flowsSheetKey)
+        name = flowsSheets.find((fs) => getFlowsSheetKey(fs) === flowsSheetKey);
       } else {
         name = flowsSheets[0];
       }
@@ -117,6 +95,8 @@ const GSheetsFlowMap: React.FC<Props> = ({ spreadSheetKey, flowsSheetKey, embed 
         handleChangeFlowsSheet(name, flowsSheets.length > 1);
       }
     }
+
+    configProps.spreadSheetKey = spreadSheetKey;
     return configProps;
   }, [url]);
 
@@ -128,27 +108,133 @@ const GSheetsFlowMap: React.FC<Props> = ({ spreadSheetKey, flowsSheetKey, embed 
         timeout: 0,
         message: (
           <ToastContent>
-            Oops… The properties sheet couldn't be loaded:
-            <br />
-            {configFetch.error.message}
+            <p>
+              Couldn't load the properties sheet from{` `}
+              <a href={`https://docs.google.com/spreadsheets/d/${spreadSheetKey}`}>
+                this spreadsheet
+              </a>
+              .
+            </p>
+            <p>Cause: {configFetch.error.message}</p>
+            <p>
+              If you are the owner of this spreadsheet, make sure you have shared it by doing the
+              following:
+              <ol>
+                <li>Click the “Share” button in the spreadsheet</li>
+                <li>
+                  Change the selection from “Restricted” to “Anyone with the link” in the drop-down
+                  under “Get link”
+                </li>
+              </ol>
+            </p>
+            <p>Make sure that there is a sheet called "properties" in the spreadsheet.</p>
           </ToastContent>
         ),
       });
     }
   }, [configFetch.error]);
 
+  const config = useMemo(() => (configFetch.value ? configFetch.value : DEFAULT_CONFIG), [
+    configFetch.value,
+  ]);
+  const flowsSheets = useMemo(() => getFlowsSheets(config), [config]);
+  const title = config[ConfigPropName.TITLE];
+  const description = config[ConfigPropName.DESCRIPTION];
+  const sourceUrl = config[ConfigPropName.SOURCE_URL];
+  const sourceName = config[ConfigPropName.SOURCE_NAME];
+  const authorUrl = config[ConfigPropName.AUTHOR_URL];
+  const authorName = config[ConfigPropName.AUTHOR_NAME];
+
+  const darkMode = useFlowMapStore(
+    (state: FlowMapStore) => state.flowMapState.settingsState.darkMode
+  );
+
+  const handleSelectFlowsSheet: React.ChangeEventHandler<HTMLSelectElement> = (event) => {
+    const sheet = event.currentTarget.value;
+    handleChangeFlowsSheet(sheet, true);
+  };
+
+  const flowTotals = useAppStore((state) => state.flowTotals);
+
   return (
-    <MapContainer embed={embed}>
-      {configFetch.loading ? (
+    <MapContainer embed={embed} darkMode={darkMode}>
+      {configFetch.loading || selectedSheet == null ? (
         <LoadingSpinner />
       ) : (
-        <FlowMapWithData
-          spreadSheetKey={spreadSheetKey}
-          embed={embed}
-          config={configFetch.value ? configFetch.value : DEFAULT_CONFIG}
-          flowsSheet={flowsSheet}
-          onSetFlowsSheet={(name: string) => handleChangeFlowsSheet(name, true)}
-        />
+        <>
+          <FromUrlFlowMap
+            // embed={embed}
+            dataFormat={'gsheets'}
+            locationsUrl={makeSheetQueryUrl(spreadSheetKey!, 'locations', 'SELECT A,B,C,D', 'json')}
+            flowsUrl={makeSheetQueryUrl(spreadSheetKey!, selectedSheet, 'SELECT *', 'json')}
+            config={config}
+          />
+          {configFetch.value && spreadSheetKey && !embed && (
+            <TitleBox top={52} left={0} darkMode={darkMode}>
+              <Collapsible darkMode={darkMode} width={300}>
+                <Column spacing={10} padding="12px 20px">
+                  {title && (
+                    <div>
+                      <Title>{title}</Title>
+                      <Description>{description}</Description>
+                    </div>
+                  )}
+                  {flowsSheets && flowsSheets.length > 1 && (
+                    <HTMLSelect
+                      value={selectedSheet}
+                      onChange={handleSelectFlowsSheet}
+                      options={flowsSheets.map((sheet) => ({
+                        label: sheet,
+                        value: sheet,
+                      }))}
+                    />
+                  )}
+                  {authorUrl ? (
+                    <div>
+                      {`Created by: `}
+                      <Away href={`${authorUrl.indexOf('://') < 0 ? 'http://' : ''}${authorUrl}`}>
+                        {authorName || 'Author'}
+                      </Away>
+                    </div>
+                  ) : authorName ? (
+                    <div>Created by: {authorName}</div>
+                  ) : null}{' '}
+                  {sourceName && sourceUrl && (
+                    <div>
+                      {'Original data source: '}
+                      <>
+                        <Away href={`${sourceUrl.indexOf('://') < 0 ? 'http://' : ''}${sourceUrl}`}>
+                          {sourceName}
+                        </Away>
+                      </>
+                    </div>
+                  )}
+                  <div>
+                    {'Data behind this map is in '}
+                    <Away href={`https://docs.google.com/spreadsheets/d/${spreadSheetKey}`}>
+                      this spreadsheet
+                    </Away>
+                    . You can <Link to="/">publish your own</Link> too.
+                  </div>
+                  {flowTotals?.data?.filteredCount != null &&
+                    flowTotals.data.unfilteredCount != null && (
+                      <TotalCount darkMode={darkMode}>
+                        {Math.round(flowTotals.data.filteredCount) ===
+                        Math.round(flowTotals.data.unfilteredCount)
+                          ? config['msg.totalCount.allTrips']?.replace(
+                              '{0}',
+                              formatCount(flowTotals.data.unfilteredCount)
+                            )
+                          : config['msg.totalCount.countOfTrips']
+                              ?.replace('{0}', formatCount(flowTotals.data.filteredCount))
+                              .replace('{1}', formatCount(flowTotals.data.unfilteredCount))}
+                      </TotalCount>
+                    )}
+                </Column>
+              </Collapsible>
+            </TitleBox>
+          )}
+        </>
       )}
       {configFetch.value && configFetch.value[ConfigPropName.TITLE] && (
         <Helmet>

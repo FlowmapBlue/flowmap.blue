@@ -10,7 +10,7 @@ export enum Direction {
 export interface Props {
   width: number;
   initialCollapsed?: boolean;
-  direction: Direction;
+  direction?: Direction;
   darkMode: boolean;
 }
 
@@ -77,6 +77,7 @@ const Button = styled.button<ButtonProps>(
 export default class Collapsible extends React.Component<Props, State> {
   static defaultProps = {
     initialCollapsed: false,
+    direction: Direction.LEFT,
   };
 
   state: State = {
@@ -102,11 +103,18 @@ export default class Collapsible extends React.Component<Props, State> {
         return <Rotate degrees={collapsed ? 180 : 360}>{'<'}</Rotate>;
       case Direction.RIGHT:
         return <Rotate degrees={collapsed ? 180 : 360}>{'>'}</Rotate>;
+      default:
+        return null;
     }
   };
 
   render() {
-    const { width, direction, darkMode, children } = this.props;
+    const {
+      width,
+      direction = Collapsible.defaultProps.direction,
+      darkMode,
+      children,
+    } = this.props;
     const { collapsed } = this.state;
     return (
       <Outer>

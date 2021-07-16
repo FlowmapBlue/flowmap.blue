@@ -3,11 +3,14 @@ import checkWebglSupport from './checkWebglSupport';
 import NoScrollContainer from './NoScrollContainer';
 import { Absolute } from './Boxes';
 import Logo from './Logo';
-import { ColorScheme, Fallback } from './index';
+import { Fallback } from './index';
 import styled from '@emotion/styled';
+import { ColorScheme } from '@flowmap.blue/data';
+import { Classes } from '@blueprintjs/core';
 
 interface Props {
   embed?: boolean;
+  darkMode?: boolean;
   children: ReactNode;
 }
 
@@ -29,8 +32,8 @@ const LogoOuter = styled(Absolute)`
   }
 `;
 
-const MapContainer: React.FC<Props> = ({ embed, children }) => (
-  <NoScrollContainer>
+const MapContainer: React.FC<Props> = ({ embed, darkMode, children }) => (
+  <NoScrollContainer className={darkMode ? Classes.DARK : undefined}>
     {supportsWebGl ? (
       <>
         {children}

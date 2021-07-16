@@ -6,7 +6,7 @@ import { IconNames } from '@blueprintjs/icons';
 import { scaleLinear, scaleSequential } from 'd3-scale';
 import { interpolateRgbBasis } from 'd3-interpolate';
 import { ClassNames } from '@emotion/core';
-import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME } from './colors';
+import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME } from '@flowmap.blue/data';
 import { Row } from './Boxes';
 
 export interface Props {
@@ -32,7 +32,7 @@ const ColorRamp: React.FC<{
   width?: number;
   height?: number;
   reverse?: boolean;
-}> = props => {
+}> = (props) => {
   const { colorScheme, width = 60, height = 13, reverse } = props;
 
   const colorScale = scaleSequential(

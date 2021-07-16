@@ -1,66 +1,5 @@
-import { connect } from 'react-refetch';
-import { csvParse } from 'd3-dsv';
-
-// TODO: use LRU cache
-const cache = new Map();
-
-const sheetFetcher = (format: 'csv' | 'json') =>
-  connect.defaults({
-    fetch: ((input: RequestInfo, init: RequestInit) => {
-      const req = new Request(input, init);
-
-      const key = `${req.url}`; // TODO: add body for POST requests
-      const cached = cache.get(key);
-
-      if (cached) {
-        return new Promise((resolve) => resolve(cached.response.clone()));
-      }
-      req.headers.set('Content-Type', 'text/plain'); // to avoid slow CORS pre-flight requests
-      return fetch(req).then((response) => {
-        cache.set(key, {
-          response: response.clone(),
-        });
-        return response;
-      });
-    }) as any,
-
-    handleResponse: function (response) {
-      if (response.headers.get('content-length') === '0' || response.status === 204) {
-        return;
-      }
-      const text = response.text();
-      if (response.status >= 200 && response.status < 300) {
-        return text.then(
-          (text: string) =>
-            new Promise((resolve, reject) => {
-              let rows;
-              try {
-                switch (format) {
-                  case 'json':
-                    const json = getJson(text) as SheetData;
-                    rows = getSheetDataAsArray(json);
-                    if (json.status !== 'ok') {
-                      throw new Error(`Error loading data from Google Sheets`);
-                    }
-                    break;
-                  case 'csv':
-                    rows = csvParse(text);
-                    break;
-                }
-                resolve(rows);
-              } catch (err) {
-                console.error(err);
-                reject(err);
-              }
-            })
-        );
-      } else {
-        return text.then((cause: any) => Promise.reject(new Error(cause)));
-      }
-    },
-  });
-
-export default sheetFetcher;
+import {DSVRowString} from 'd3-dsv';
+import {LoadingState, LoadingStatus} from './LoadingState';
 
 const BASE_URL = `https://docs.google.com/spreadsheets/d`;
 
@@ -74,20 +13,12 @@ export const makeSheetQueryUrl = (
     `${query} OPTIONS no_format`
   )}&tqx=out:${format}&sheet=${encodeURIComponent(sheet)}`;
 
-function getJson(text: string) {
-  const startIdx = text.indexOf('{');
-  const endIdx = text.lastIndexOf('}');
-  if (startIdx >= 0 && endIdx >= startIdx) {
-    return JSON.parse(text.substring(startIdx, endIdx + 1));
-  }
-}
-
-type CellValue = {
+export type CellValue = {
   v: string | number;
   f: string;
 };
 
-type SheetData = {
+export type SheetData = {
   version: string;
   status: string;
   table: {
@@ -102,7 +33,37 @@ type SheetData = {
   };
 };
 
-function getSheetDataAsArray(data: SheetData) {
+
+export const fetchGsheet = async <Row>(url: string): Promise<LoadingState<Row[]>> => {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'text/plain' // to avoid slow CORS pre-flight requests
+      }
+    });
+    // if (response.headers.get('content-length') === '0' || response.status === 204) {
+    //   return;
+    // }
+    if (response.status >= 200 && response.status < 300) {
+      const text = await response.text();
+      let rows;
+      const json = parseGsheetsJson(text) as SheetData;
+      rows = getSheetDataAsArray(json) as unknown as Row[];
+      if (json.status !== 'ok') {
+        throw new Error(`Error loading data from Google Sheets`);
+      }
+      return { status: LoadingStatus.DONE, data: rows };
+    } else {
+      return { status: LoadingStatus.ERROR };
+    }
+  } catch (err) {
+    console.error(err);
+    return { status: LoadingStatus.ERROR };
+  }
+};
+
+
+export function getSheetDataAsArray(data: SheetData) {
   if (!data || !data.table || !data.table.cols || !data.table.rows) {
     return [];
   }
@@ -162,4 +123,12 @@ function parseGSheetsTime(input: string | undefined): Date | undefined {
     }
   }
   return undefined;
+}
+
+export function parseGsheetsJson(text: string) {
+  const startIdx = text.indexOf('{');
+  const endIdx = text.lastIndexOf('}');
+  if (startIdx >= 0 && endIdx >= startIdx) {
+    return JSON.parse(text.substring(startIdx, endIdx + 1));
+  }
 }

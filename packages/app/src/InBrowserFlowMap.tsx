@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Nav from './Nav';
 import styled from '@emotion/styled';
 import { Button, Classes, H5, Intent, TextArea } from '@blueprintjs/core';
@@ -6,8 +6,17 @@ import { IconNames } from '@blueprintjs/icons';
 import { Route, Switch, useHistory } from 'react-router-dom';
 import { dsvFormat } from 'd3-dsv';
 import { Location as HistoryLocation } from 'history';
-import FlowMap, { DEFAULT_CONFIG, Flow, Location, MapContainer, prepareFlows } from '@flowmap.blue/core';
-import { PromiseState } from 'react-refetch';
+import FlowMap, { MapContainer, prepareFlows } from '@flowmap.blue/core';
+import {
+  prepareLayersData,
+  createFlowMapStore,
+  DEFAULT_CONFIG,
+  Flow,
+  Location,
+  createLayersDataStore,
+  LoadingStatus,
+} from '@flowmap.blue/data';
+import { useAppStore } from './AppStore';
 
 interface Props {
   location: HistoryLocation<{
@@ -18,16 +27,30 @@ interface Props {
 
 const FlowMapContainer = (props: Props) => {
   const { flows, locations } = props.location.state;
+  const useFlowMapStore = useMemo(createFlowMapStore, [flows, locations]);
+  const layersDataStore = useMemo(createLayersDataStore, [flows, locations]);
+  const colors = useMemo(() => layersDataStore.getState().getFlowMapColorsRGBA(), [
+    layersDataStore,
+  ]);
+  const layersData = useMemo(
+    () => ({
+      status: LoadingStatus.DONE,
+      data: prepareLayersData(locations, flows, colors),
+    }),
+    [flows, locations, colors]
+  );
+
   return (
     <MapContainer>
-      <FlowMap
-        inBrowser={true}
-        flowsFetch={PromiseState.resolve(flows)}
-        locationsFetch={PromiseState.resolve(locations)}
-        config={DEFAULT_CONFIG}
-        spreadSheetKey={undefined}
-        flowsSheet={undefined}
-      />
+      {layersData.status === LoadingStatus.DONE && (
+        <FlowMap
+          useAppStore={useAppStore}
+          useFlowMapStore={useFlowMapStore}
+          inBrowser={true}
+          layersData={layersData}
+          config={DEFAULT_CONFIG}
+        />
+      )}
     </MapContainer>
   );
 };

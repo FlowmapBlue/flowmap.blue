@@ -4,7 +4,13 @@ import {
   defaultMemoize,
   ParametricSelector,
 } from 'reselect';
-import { LocationFilterMode, MAX_ZOOM_LEVEL, State } from './FlowMap.state';
+import {
+  LocationFilterMode,
+  MAX_ZOOM_LEVEL,
+  FlowMapState,
+  TimeGranularityKey,
+  getTimeGranularityByKey,
+} from './';
 import {
   Config,
   ConfigPropName,
@@ -23,29 +29,38 @@ import {
 import * as Cluster from '@flowmap.gl/cluster';
 import { ClusterNode, findAppropriateZoomLevel, isCluster } from '@flowmap.gl/cluster';
 import getColors from './colors';
-import { DEFAULT_MAP_STYLE_DARK, DEFAULT_MAP_STYLE_LIGHT, parseBoolConfigProp } from './config';
 import { nest } from 'd3-collection';
-import { Props } from './FlowMap';
 import { bounds } from '@mapbox/geo-viewport';
 import KDBush from 'kdbush';
-import { descending, min } from 'd3-array';
+import { ascending, descending, min } from 'd3-array';
 import { csvParseRows } from 'd3-dsv';
 import { getTimeGranularityByOrder, getTimeGranularityForDate, TimeGranularity } from './time';
+import { FlowAccessors } from '@flowmap.gl/core';
+
+// TODO move necessary props to State
+export interface Props {
+  flows: Flow[] | undefined;
+  locations: Location[] | undefined;
+}
 
 export const NUMBER_OF_FLOWS_TO_DISPLAY = 5000;
 
-export type Selector<T> = ParametricSelector<State, Props, T>;
+export type Selector<T> = ParametricSelector<FlowMapState, Props, T>;
 
-export const getFetchedFlows = (state: State, props: Props) => props.flowsFetch.value;
-export const getFetchedLocations = (state: State, props: Props) => props.locationsFetch.value;
-export const getSelectedLocations = (state: State, props: Props) => state.selectedLocations;
-export const getLocationFilterMode = (state: State, props: Props) => state.locationFilterMode;
-export const getClusteringEnabled = (state: State, props: Props) => state.clusteringEnabled;
-export const getLocationTotalsEnabled = (state: State, props: Props) => state.locationTotalsEnabled;
-export const getZoom = (state: State, props: Props) => state.viewport.zoom;
-export const getConfig = (state: State, props: Props) => props.config;
-export const getViewport = (state: State, props: Props) => state.viewport;
-export const getSelectedTimeRange = (state: State, props: Props) => state.selectedTimeRange;
+export const getFetchedFlows = (state: FlowMapState, props: Props) => props.flows;
+export const getFetchedLocations = (state: FlowMapState, props: Props) => props.locations;
+export const getSelectedLocations = (state: FlowMapState, props: Props) =>
+  state.filterState.selectedLocations;
+export const getLocationFilterMode = (state: FlowMapState, props: Props) =>
+  state.filterState.locationFilterMode;
+export const getClusteringEnabled = (state: FlowMapState, props: Props) =>
+  state.settingsState.clusteringEnabled;
+export const getLocationTotalsEnabled = (state: FlowMapState, props: Props) =>
+  state.settingsState.locationTotalsEnabled;
+export const getZoom = (state: FlowMapState, props: Props) => state.viewport.zoom;
+export const getViewport = (state: FlowMapState, props: Props) => state.viewport;
+export const getSelectedTimeRange = (state: FlowMapState, props: Props) =>
+  state.filterState.selectedTimeRange;
 
 export const getInvalidLocationIds: Selector<string[] | undefined> = createSelector(
   getFetchedLocations,
@@ -71,7 +86,7 @@ export const getLocations: Selector<Location[] | undefined> = createSelector(
     if (!locations) return undefined;
     if (!invalidIds || invalidIds.length === 0) return locations;
     const invalid = new Set(invalidIds);
-    return locations.filter((location) => !invalid.has(getLocationId(location)));
+    return locations.filter((location: Location) => !invalid.has(getLocationId(location)));
   }
 );
 
@@ -92,8 +107,10 @@ export const getSortedFlowsForKnownLocations: Selector<Flow[] | undefined> = cre
   (flows, ids) => {
     if (!ids || !flows) return undefined;
     return flows
-      .filter((flow) => ids.has(getFlowOriginId(flow)) && ids.has(getFlowDestId(flow)))
-      .sort((a, b) => descending(Math.abs(getFlowMagnitude(a)), Math.abs(getFlowMagnitude(b))));
+      .filter((flow: Flow) => ids.has(getFlowOriginId(flow)) && ids.has(getFlowDestId(flow)))
+      .sort((a: Flow, b: Flow) =>
+        descending(Math.abs(getFlowMagnitude(a)), Math.abs(getFlowMagnitude(b)))
+      );
   }
 );
 
@@ -114,7 +131,7 @@ const getActualTimeExtent: Selector<[Date, Date] | undefined> = createSelector(
   }
 );
 
-export const getTimeGranularity: Selector<TimeGranularity | undefined> = createSelector(
+export const getTimeGranularityKey: Selector<TimeGranularityKey | undefined> = createSelector(
   getSortedFlowsForKnownLocations,
   getActualTimeExtent,
   (flows, timeExtent) => {
@@ -122,14 +139,18 @@ export const getTimeGranularity: Selector<TimeGranularity | undefined> = createS
 
     const minOrder = min(flows, (d) => getTimeGranularityForDate(getFlowTime(d)!).order);
     if (minOrder == null) return undefined;
-    return getTimeGranularityByOrder(minOrder);
+    const timeGranularity = getTimeGranularityByOrder(minOrder);
+    return timeGranularity ? timeGranularity.key : undefined;
   }
 );
 
 export const getTimeExtent: Selector<[Date, Date] | undefined> = createSelector(
   getActualTimeExtent,
-  getTimeGranularity,
-  (timeExtent, timeGranularity) => {
+  getTimeGranularityKey,
+  (timeExtent, timeGranularityKey) => {
+    const timeGranularity = timeGranularityKey
+      ? getTimeGranularityByKey(timeGranularityKey)
+      : undefined;
     if (!timeExtent || !timeGranularity?.interval) return undefined;
     const { interval } = timeGranularity;
     return [timeExtent[0], interval.offset(interval.floor(timeExtent[1]), 1)];
@@ -172,11 +193,23 @@ export const getLocationsHavingFlows: Selector<Location[] | undefined> = createS
   }
 );
 
+export const getLocationsById: Selector<Map<string, Location> | undefined> = createSelector(
+  getLocationsHavingFlows,
+  (locations) => {
+    if (!locations) return undefined;
+    return (nest<Location, Location>()
+      .key((d: Location) => d.id)
+      .rollup(([d]) => d)
+      .map(locations) as any) as Map<string, Location>;
+  }
+);
+
 export const getClusterIndex: Selector<Cluster.ClusterIndex | undefined> = createSelector(
   getLocationsHavingFlows,
+  getLocationsById,
   getSortedFlowsForKnownLocations,
-  (locations, flows) => {
-    if (!locations || !flows) return undefined;
+  (locations, locationsById, flows) => {
+    if (!locations || !locationsById || !flows) return undefined;
 
     const getLocationWeight = Cluster.makeLocationWeightGetter(flows, {
       getFlowOriginId,
@@ -193,14 +226,9 @@ export const getClusterIndex: Selector<Cluster.ClusterIndex | undefined> = creat
     );
     const clusterIndex = Cluster.buildIndex(clusterLevels);
 
-    const locationsById = nest<Location, Location>()
-      .key((d: Location) => d.id)
-      .rollup(([d]) => d)
-      .object(locations);
-
     // Adding meaningful names
     const getName = (id: string) => {
-      const loc = locationsById[id];
+      const loc = locationsById.get(id);
       if (loc) return loc.name || loc.id || id;
       return `#${id}`;
     };
@@ -227,10 +255,9 @@ export const getClusterIndex: Selector<Cluster.ClusterIndex | undefined> = creat
 );
 
 export const getAvailableClusterZoomLevels = createSelector(
-  getZoom,
   getClusterIndex,
   getSelectedLocations,
-  (mapZoom, clusterIndex, selectedLocations): number[] | undefined => {
+  (clusterIndex, selectedLocations): number[] | undefined => {
     if (!clusterIndex) {
       return undefined;
     }
@@ -274,12 +301,13 @@ const _getClusterZoom: Selector<number | undefined> = createSelector(
   }
 );
 
-export function getClusterZoom(state: State, props: Props) {
-  if (!state.clusteringEnabled) return undefined;
-  if (state.clusteringAuto || state.manualClusterZoom == null) {
+export function getClusterZoom(state: FlowMapState, props: Props) {
+  const { settingsState } = state;
+  if (!settingsState.clusteringEnabled) return undefined;
+  if (settingsState.clusteringAuto || settingsState.manualClusterZoom == null) {
     return _getClusterZoom(state, props);
   }
-  return state.manualClusterZoom;
+  return settingsState.manualClusterZoom;
 }
 
 export const getLocationsForSearchBox: Selector<
@@ -319,24 +347,29 @@ export const getLocationsForSearchBox: Selector<
 );
 
 export const getDiffMode: Selector<boolean> = createSelector(getFetchedFlows, (flows) => {
-  if (flows && flows.find((f) => getFlowMagnitude(f) < 0)) {
+  if (flows && flows.find((f: Flow) => getFlowMagnitude(f) < 0)) {
     return true;
   }
   return false;
 });
 
-export const getColorSchemeKey: Selector<string | undefined> = (state: State, props: Props) =>
-  state.colorSchemeKey;
+export const getColorSchemeKey: Selector<string | undefined> = (
+  state: FlowMapState,
+  props: Props
+) => state.settingsState.colorSchemeKey;
 
-export const getDarkMode: Selector<boolean> = (state: State, props: Props) => state.darkMode;
+export const getDarkMode: Selector<boolean> = (state: FlowMapState, props: Props) =>
+  state.settingsState.darkMode;
 
-export const getFadeEnabled: Selector<boolean> = (state: State, props: Props) => state.fadeEnabled;
-export const getFadeAmount: Selector<number> = (state: State, props: Props) => state.fadeAmount;
+export const getFadeEnabled: Selector<boolean> = (state: FlowMapState, props: Props) =>
+  state.settingsState.fadeEnabled;
+export const getFadeAmount: Selector<number> = (state: FlowMapState, props: Props) =>
+  state.settingsState.fadeAmount;
 
-export const getAnimate: Selector<boolean> = (state: State, props: Props) => state.animationEnabled;
+export const getAnimate: Selector<boolean> = (state: FlowMapState, props: Props) =>
+  state.settingsState.animationEnabled;
 
 export const getFlowMapColors = createSelector(
-  getConfig,
   getDiffMode,
   getColorSchemeKey,
   getDarkMode,
@@ -345,16 +378,6 @@ export const getFlowMapColors = createSelector(
   getAnimate,
   getColors
 );
-
-export const getMapboxMapStyle = createSelector(getConfig, getDarkMode, (config, darkMode) => {
-  const configMapStyle = config[ConfigPropName.MAPBOX_MAP_STYLE];
-  if (configMapStyle) {
-    if (darkMode === parseBoolConfigProp(config[ConfigPropName.COLORS_DARK_MODE])) {
-      return configMapStyle;
-    }
-  }
-  return darkMode ? DEFAULT_MAP_STYLE_DARK : DEFAULT_MAP_STYLE_LIGHT;
-});
 
 export const getUnknownLocations: Selector<Set<string> | undefined> = createSelector(
   getLocationIds,
@@ -489,11 +512,14 @@ export const getExpandedSelectedLocationsSet: Selector<Set<string> | undefined> 
 
 export const getTotalCountsByTime: Selector<CountByTime[] | undefined> = createSelector(
   getSortedFlowsForKnownLocations,
-  getTimeGranularity,
+  getTimeGranularityKey,
   getTimeExtent,
   getExpandedSelectedLocationsSet,
   getLocationFilterMode,
-  (flows, timeGranularity, timeExtent, selectedLocationSet, locationFilterMode) => {
+  (flows, timeGranularityKey, timeExtent, selectedLocationSet, locationFilterMode) => {
+    const timeGranularity = timeGranularityKey
+      ? getTimeGranularityByKey(timeGranularityKey)
+      : undefined;
     if (!flows || !timeGranularity || !timeExtent) return undefined;
     const byTime = flows.reduce((m, flow) => {
       if (isFlowInSelection(flow, selectedLocationSet, locationFilterMode)) {
@@ -750,8 +776,8 @@ const _getLocationTotalsForViewportExtent: Selector<
     calcLocationTotalsExtent(locationTotals, locationsInViewport)
 );
 
-export function getLocationTotalsExtent(state: State, props: Props) {
-  if (state.adaptiveScalesEnabled) {
+export function getLocationTotalsExtent(state: FlowMapState, props: Props) {
+  if (state.settingsState.adaptiveScalesEnabled) {
     return _getLocationTotalsForViewportExtent(state, props);
   } else {
     return _getLocationTotalsExtent(state, props);
@@ -772,9 +798,9 @@ export const getFlowsForFlowMapLayer: Selector<Flow[] | undefined> = createSelec
       if (locationIdsInViewport.has(origin) || locationIdsInViewport.has(dest)) {
         let pick = isFlowInSelection(flow, selectedLocationsSet, locationFilterMode);
         if (pick) {
-          picked.push(flow);
           if (origin !== dest) {
-            // exclude self-loops from count
+            // exclude self-loops
+            picked.push(flow);
             pickedCount++;
           }
         }
@@ -782,7 +808,9 @@ export const getFlowsForFlowMapLayer: Selector<Flow[] | undefined> = createSelec
       // Only keep top
       if (pickedCount > NUMBER_OF_FLOWS_TO_DISPLAY) break;
     }
-    return picked;
+    // assuming they are sorted in descending order,
+    // we need ascending for rendering
+    return picked.reverse();
   }
 );
 
@@ -795,4 +823,46 @@ function latY(lat: number) {
   const sin = Math.sin((lat * Math.PI) / 180);
   const y = 0.5 - (0.25 * Math.log((1 + sin) / (1 - sin))) / Math.PI;
   return y < 0 ? 0 : y > 1 ? 1 : y;
+}
+
+export interface LocationsTotals {
+  incoming: { [id: string]: number };
+  outgoing: { [id: string]: number };
+  within: { [id: string]: number };
+}
+
+export function calcLocationTotals(
+  locations: (Location | ClusterNode)[],
+  flows: Flow[],
+  inputAccessors: FlowAccessors
+) {
+  const { getFlowOriginId, getFlowDestId, getFlowMagnitude } = inputAccessors;
+  return flows.reduce(
+    (acc: LocationsTotals, curr) => {
+      const originId = getFlowOriginId(curr);
+      const destId = getFlowDestId(curr);
+      const magnitude = getFlowMagnitude(curr);
+      if (originId === destId) {
+        acc.within[originId] = (acc.within[originId] || 0) + magnitude;
+      } else {
+        acc.outgoing[originId] = (acc.outgoing[originId] || 0) + magnitude;
+        acc.incoming[destId] = (acc.incoming[destId] || 0) + magnitude;
+      }
+      return acc;
+    },
+    { incoming: {}, outgoing: {}, within: {} }
+  );
+}
+
+export function getLocationMaxAbsTotalGetter(
+  locations: (Location | ClusterNode)[],
+  getLocationTotalIn: (location: Location | ClusterNode) => number,
+  getLocationTotalOut: (location: Location | ClusterNode) => number,
+  getLocationTotalWithin: (location: Location | ClusterNode) => number
+) {
+  return (location: Location | ClusterNode) =>
+    Math.max(
+      Math.abs(getLocationTotalIn(location) + getLocationTotalWithin(location)),
+      Math.abs(getLocationTotalOut(location) + getLocationTotalWithin(location))
+    );
 }

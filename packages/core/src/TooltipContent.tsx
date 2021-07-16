@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { Config, getFlowMagnitude } from './types';
-import { Location } from './types';
+import { Config, getFlowMagnitude } from '@flowmap.blue/data';
 import styled from '@emotion/styled';
 import * as d3Format from 'd3-format';
-import { Flow, LocationPickingInfo } from '@flowmap.gl/core';
+import { LocationPickingInfo } from '@flowmap.gl/core';
+import { Flow, Location } from '@flowmap.blue/data';
 
 type OuterProps = { width: number };
 const Outer = styled.div<OuterProps>(

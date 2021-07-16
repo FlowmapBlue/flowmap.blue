@@ -2,10 +2,11 @@ import { Column, LegendTitle, Row } from './Boxes';
 import { Button, Popover, Slider, Switch } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import * as React from 'react';
-import { Dispatch, SyntheticEvent } from 'react';
+import { SyntheticEvent } from 'react';
 import styled from '@emotion/styled';
-import { Action, ActionType, State } from './FlowMap.state';
+import { ActionType, FlowMapStore } from '@flowmap.blue/data';
 import ColorSchemeSelector from './ColorSchemeSelector';
+import { UseStore } from 'zustand';
 
 const SettingsOuter = styled.div`
   width: 290px;
@@ -19,23 +20,19 @@ const StyledSwitch = styled(Switch)`
 `;
 
 interface Props {
-  state: State;
-  darkMode: boolean;
-  dispatch: Dispatch<Action>;
-  clusterZoom: number | undefined;
-  availableClusterZoomLevels: number[] | undefined;
-  onChangeClusteringAuto: (value: boolean) => void;
+  useFlowMapStore: UseStore<FlowMapStore>;
 }
 
-const SettingsPopover: React.FC<Props> = (
-  {
-    dispatch,
-    state,
-    darkMode,
-    clusterZoom,
-    availableClusterZoomLevels,
-    onChangeClusteringAuto,
-  }) => {
+const SettingsPopover: React.FC<Props> = ({ useFlowMapStore }) => {
+  // clusterZoom={getClusterZoom(state, props)}
+  // availableClusterZoomLevels={getAvailableClusterZoomLevels(state, props)}
+  const clusterZoom = 5;
+  const availableClusterZoomLevels = [2, 3, 4, 5];
+
+  const dispatch = useFlowMapStore((state: FlowMapStore) => state.dispatch);
+  const settingsState = useFlowMapStore((state: FlowMapStore) => state.flowMapState.settingsState);
+  const { darkMode } = settingsState;
+
   const handleToggleClustering = (evt: SyntheticEvent) => {
     const value = (evt.target as HTMLInputElement).checked;
     dispatch({
@@ -46,7 +43,24 @@ const SettingsPopover: React.FC<Props> = (
 
   const handleToggleClusteringAuto = (evt: SyntheticEvent) => {
     const value = (evt.target as HTMLInputElement).checked;
-    onChangeClusteringAuto(value);
+    // const clusterIndex = getClusterIndex(state, props);
+    // const handleChangeClusteringAuto = (value: boolean) => {
+    //   if (!value) {
+    //     if (clusterIndex) {
+    //       const { availableZoomLevels } = clusterIndex;
+    //       if (availableZoomLevels != null) {
+    //         dispatch({
+    //           type: ActionType.SET_MANUAL_CLUSTER_ZOOM,
+    //           manualClusterZoom:
+    //             findAppropriateZoomLevel(clusterIndex.availableZoomLevels, viewport.zoom),
+    //         });
+    //       }
+    //     }
+    //   }
+    //   dispatch({
+    //     type: ActionType.SET_CLUSTERING_AUTO,
+    //     clusteringAuto: value,
+    //   });
   };
 
   const handleChangeManualClusterZoom = (index: number) => {
@@ -139,42 +153,44 @@ const SettingsPopover: React.FC<Props> = (
             <Row spacing={5}>
               <div style={{ whiteSpace: 'nowrap' }}>Color scheme</div>
               <ColorSchemeSelector
-                selected={state.colorSchemeKey}
+                selected={settingsState.colorSchemeKey}
                 reverse={darkMode}
                 onChange={handleChangeColorScheme}
               />
             </Row>
             <Column spacing={10}>
               <StyledSwitch
-                checked={state.darkMode}
+                checked={settingsState.darkMode}
                 label="Dark mode"
                 onChange={handleToggleDarkMode}
               />
               <Row spacing={15}>
                 <StyledSwitch
-                  checked={state.fadeEnabled}
+                  checked={settingsState.fadeEnabled}
                   label="Fade"
                   onChange={handleToggleFadeEnabled}
                 />
-                {state.fadeEnabled && <Slider
-                  value={state.fadeAmount}
-                  min={0}
-                  max={100}
-                  stepSize={1}
-                  labelRenderer={false}
-                  showTrackFill={false}
-                  onChange={handleChangeFadeAmount}
-                />}
+                {settingsState.fadeEnabled && (
+                  <Slider
+                    value={settingsState.fadeAmount}
+                    min={0}
+                    max={100}
+                    stepSize={1}
+                    labelRenderer={false}
+                    showTrackFill={false}
+                    onChange={handleChangeFadeAmount}
+                  />
+                )}
               </Row>
               <Row spacing={15}>
                 <StyledSwitch
-                  checked={state.baseMapEnabled}
+                  checked={settingsState.baseMapEnabled}
                   label="Base map"
                   onChange={handleToggleBaseMap}
                 />
-                {state.baseMapEnabled && (
+                {settingsState.baseMapEnabled && (
                   <Slider
-                    value={state.baseMapOpacity}
+                    value={settingsState.baseMapOpacity}
                     min={0}
                     max={100}
                     stepSize={1}
@@ -185,56 +201,60 @@ const SettingsPopover: React.FC<Props> = (
                 )}
               </Row>
               <StyledSwitch
-                checked={state.animationEnabled}
+                checked={settingsState.animationEnabled}
                 label="Animate flows"
                 onChange={handleToggleAnimation}
               />
               <StyledSwitch
-                checked={state.adaptiveScalesEnabled}
+                checked={settingsState.adaptiveScalesEnabled}
                 label="Dynamic range adjustment"
                 onChange={handleToggleAdaptiveScales}
               />
               <StyledSwitch
-                checked={state.locationTotalsEnabled}
+                checked={settingsState.locationTotalsEnabled}
                 label="Location totals"
                 onChange={handleToggleLocationTotals}
               />
-              {availableClusterZoomLevels &&
-              <>
-                <Row spacing={15}>
-                  <StyledSwitch
-                    checked={state.clusteringEnabled}
-                    label="Clustering"
-                    onChange={handleToggleClustering}
-                  />
-                  {state.clusteringEnabled &&
+              {availableClusterZoomLevels && (
+                <>
+                  <Row spacing={15}>
                     <StyledSwitch
-                checked={state.clusteringAuto}
-                    innerLabel={state.clusteringAuto ? 'Auto' : 'Manual'}
-                    onChange={handleToggleClusteringAuto}
-                  />}
-                </Row>
-                {state.clusteringEnabled && !state.clusteringAuto &&
-                <Row spacing={15}>
-                  <div style={{ whiteSpace: 'nowrap', marginLeft: 38 }}>Level</div>
-                  <Slider
-                    value={
-                      availableClusterZoomLevels.length - 1 -
-                      (availableClusterZoomLevels.indexOf(
-                        state.manualClusterZoom != null
-                          ? state.manualClusterZoom
-                          : clusterZoom || 0
-                      ))
-                    }
-                    min={0}
-                    max={availableClusterZoomLevels.length - 1}
-                    stepSize={1}
-                    labelRenderer={false}
-                    showTrackFill={false}
-                    onChange={handleChangeManualClusterZoom}
-                  />
-                </Row>}
-              </>}
+                      checked={settingsState.clusteringEnabled}
+                      label="Clustering"
+                      onChange={handleToggleClustering}
+                    />
+                    {settingsState.clusteringEnabled && (
+                      <StyledSwitch
+                        checked={settingsState.clusteringAuto}
+                        innerLabel={settingsState.clusteringAuto ? 'Auto' : 'Manual'}
+                        onChange={handleToggleClusteringAuto}
+                      />
+                    )}
+                  </Row>
+                  {settingsState.clusteringEnabled && !settingsState.clusteringAuto && (
+                    <Row spacing={15}>
+                      <div style={{ whiteSpace: 'nowrap', marginLeft: 38 }}>Level</div>
+                      <Slider
+                        value={
+                          availableClusterZoomLevels.length -
+                          1 -
+                          availableClusterZoomLevels.indexOf(
+                            settingsState.manualClusterZoom != null
+                              ? settingsState.manualClusterZoom
+                              : clusterZoom || 0
+                          )
+                        }
+                        min={0}
+                        max={availableClusterZoomLevels.length - 1}
+                        stepSize={1}
+                        labelRenderer={false}
+                        showTrackFill={false}
+                        onChange={handleChangeManualClusterZoom}
+                      />
+                    </Row>
+                  )}
+                </>
+              )}
             </Column>
           </Column>
         </SettingsOuter>

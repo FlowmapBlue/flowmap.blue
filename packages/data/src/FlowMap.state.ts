@@ -1,17 +1,20 @@
-import { FlyToInterpolator } from 'react-map-gl';
-import { Config, ConfigPropName, Flow, ViewportProps } from './types';
-import { Props as TooltipProps } from './Tooltip';
+import {
+  COLOR_SCHEME_KEYS,
+  Config,
+  ConfigPropName,
+  Flow,
+  LocationFilterMode,
+  parseBoolConfigProp,
+  parseNumberConfigProp,
+  ViewportProps,
+} from './';
 import * as queryString from 'query-string';
 import { viewport } from '@mapbox/geo-viewport';
-import { parseBoolConfigProp, parseNumberConfigProp } from './config';
-import { COLOR_SCHEME_KEYS } from './colors';
 import { csvFormatRows, csvParseRows } from 'd3-dsv';
-import { Reducer } from 'react';
-import { easeCubic } from 'd3-ease';
 import { timeFormat, timeParse } from 'd3-time-format';
 
-export const MIN_ZOOM_LEVEL = 0;
 export const MAX_ZOOM_LEVEL = 20;
+export const MIN_ZOOM_LEVEL = 0;
 export const MIN_PITCH = 0;
 export const MAX_PITCH = +60;
 
@@ -19,11 +22,13 @@ const TIME_QUERY_FORMAT = '%Y%m%dT%H%M%S';
 const timeToQuery = timeFormat(TIME_QUERY_FORMAT);
 const timeFromQuery = timeParse(TIME_QUERY_FORMAT);
 
-export function mapTransition(duration: number = 500) {
+export function mapTransition() {
   return {
-    transitionDuration: duration,
-    transitionInterpolator: new FlyToInterpolator(),
-    transitionEasing: easeCubic,
+    transitionDuration: 0,
+    // transitionInterpolator: new FlyToInterpolator(),
+    // transitionEasing: easeCubic,
+    transitionInterpolator: undefined,
+    transitionEasing: undefined,
   };
 }
 export enum HighlightType {
@@ -41,23 +46,15 @@ export interface FlowHighlight {
   flow: Flow;
 }
 
-export enum LocationFilterMode {
-  ALL = 'ALL',
-  INCOMING = 'INCOMING',
-  OUTGOING = 'OUTGOING',
-  BETWEEN = 'BETWEEN',
-}
-
 export type Highlight = LocationHighlight | FlowHighlight;
 
-export interface State {
-  viewport: ViewportProps;
-  adjustViewportToLocations: boolean;
-  tooltip?: TooltipProps;
-  highlight?: Highlight;
+export interface FilterState {
   selectedLocations: string[] | undefined;
   selectedTimeRange: [Date, Date] | undefined;
   locationFilterMode: LocationFilterMode;
+}
+
+export interface SettingsState {
   animationEnabled: boolean;
   fadeEnabled: boolean;
   locationTotalsEnabled: boolean;
@@ -65,12 +62,21 @@ export interface State {
   clusteringEnabled: boolean;
   clusteringAuto: boolean;
   manualClusterZoom?: number;
-  baseMapEnabled: boolean;
   darkMode: boolean;
   fadeAmount: number;
-  baseMapOpacity: number;
   colorSchemeKey: string | undefined;
-  selectedFlowsSheet: string | undefined;
+  // TODO: move out basemap settings as changes in them
+  //       shouldn't cause recalculating layers data
+  baseMapEnabled: boolean;
+  baseMapOpacity: number;
+}
+
+export interface FlowMapState {
+  filterState: FilterState;
+  settingsState: SettingsState;
+  viewport: ViewportProps;
+  adjustViewportToLocations: boolean;
+  highlight?: Highlight;
 }
 
 export enum ActionType {
@@ -79,7 +85,6 @@ export enum ActionType {
   ZOOM_OUT = 'ZOOM_OUT',
   RESET_BEARING_PITCH = 'RESET_BEARING_PITCH',
   SET_HIGHLIGHT = 'SET_HIGHLIGHT',
-  SET_TOOLTIP = 'SET_TOOLTIP',
   CLEAR_SELECTION = 'CLEAR_SELECTION',
   SELECT_LOCATION = 'SELECT_LOCATION',
   SET_SELECTED_LOCATIONS = 'SET_SELECTED_LOCATIONS',
@@ -139,10 +144,6 @@ export type Action =
       range: [Date, Date];
     }
   | {
-      type: ActionType.SET_TOOLTIP;
-      tooltip: TooltipProps | undefined;
-    }
-  | {
       type: ActionType.SET_CLUSTERING_ENABLED;
       clusteringEnabled: boolean;
     }
@@ -191,7 +192,7 @@ export type Action =
       colorSchemeKey: string;
     };
 
-function mainReducer(state: State, action: Action): State {
+export function mainReducer(state: FlowMapState, action: Action): FlowMapState {
   switch (action.type) {
     case ActionType.SET_VIEWPORT: {
       const { viewport, adjustViewportToLocations } = action;
@@ -200,8 +201,8 @@ function mainReducer(state: State, action: Action): State {
         viewport: {
           ...viewport,
           zoom: Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, viewport.zoom)),
+          ...mapTransition(),
         },
-        tooltip: undefined,
         highlight: undefined,
         ...(adjustViewportToLocations != null && {
           adjustViewportToLocations: false,
@@ -215,8 +216,8 @@ function mainReducer(state: State, action: Action): State {
         viewport: {
           ...viewport,
           zoom: Math.min(MAX_ZOOM_LEVEL, viewport.zoom * 1.1),
+          ...mapTransition(),
         },
-        tooltip: undefined,
         highlight: undefined,
       };
     }
@@ -227,8 +228,8 @@ function mainReducer(state: State, action: Action): State {
         viewport: {
           ...viewport,
           zoom: Math.max(MIN_ZOOM_LEVEL, viewport.zoom / 1.1),
+          ...mapTransition(),
         },
-        tooltip: undefined,
         highlight: undefined,
       };
     }
@@ -240,7 +241,7 @@ function mainReducer(state: State, action: Action): State {
           ...viewport,
           bearing: 0,
           pitch: 0,
-          ...mapTransition(500),
+          ...mapTransition(),
         },
       };
     }
@@ -251,20 +252,15 @@ function mainReducer(state: State, action: Action): State {
         highlight,
       };
     }
-    case ActionType.SET_TOOLTIP: {
-      const { tooltip } = action;
-      return {
-        ...state,
-        tooltip,
-      };
-    }
     case ActionType.CLEAR_SELECTION: {
       return {
         ...state,
-        selectedLocations: undefined,
-        locationFilterMode: LocationFilterMode.ALL,
+        filterState: {
+          ...state.filterState,
+          selectedLocations: undefined,
+          locationFilterMode: LocationFilterMode.ALL,
+        },
         highlight: undefined,
-        tooltip: undefined,
       };
     }
     case ActionType.SET_SELECTED_LOCATIONS: {
@@ -273,31 +269,43 @@ function mainReducer(state: State, action: Action): State {
       if (isEmpty) {
         return {
           ...state,
-          locationFilterMode: LocationFilterMode.ALL,
-          selectedLocations: undefined,
+          filterState: {
+            ...state.filterState,
+            selectedLocations: undefined,
+            locationFilterMode: LocationFilterMode.ALL,
+          },
         };
       }
       return {
         ...state,
-        selectedLocations,
+        filterState: {
+          ...state.filterState,
+          selectedLocations,
+        },
       };
     }
     case ActionType.SET_LOCATION_FILTER_MODE: {
       const { mode } = action;
       return {
         ...state,
-        locationFilterMode: mode,
+        filterState: {
+          ...state.filterState,
+          locationFilterMode: mode,
+        },
       };
     }
     case ActionType.SET_TIME_RANGE: {
       const { range } = action;
       return {
         ...state,
-        selectedTimeRange: range,
+        filterState: {
+          ...state.filterState,
+          selectedTimeRange: range,
+        },
       };
     }
     case ActionType.SELECT_LOCATION: {
-      const { selectedLocations } = state;
+      const { selectedLocations } = state.filterState;
       const { locationId, incremental } = action;
       let nextSelectedLocations;
       if (selectedLocations) {
@@ -318,106 +326,143 @@ function mainReducer(state: State, action: Action): State {
       }
       return {
         ...state,
-        selectedLocations: nextSelectedLocations,
+        filterState: {
+          ...state.filterState,
+          selectedLocations: nextSelectedLocations,
+        },
         ...(!nextSelectedLocations && {
           locationFilterMode: LocationFilterMode.ALL,
         }),
         highlight: undefined,
-        tooltip: undefined,
       };
     }
     case ActionType.SET_CLUSTERING_ENABLED: {
       const { clusteringEnabled } = action;
       return {
         ...state,
-        clusteringEnabled,
+        settingsState: {
+          ...state.settingsState,
+          clusteringEnabled,
+        },
       };
     }
     case ActionType.SET_CLUSTERING_AUTO: {
       const { clusteringAuto } = action;
       return {
         ...state,
-        clusteringAuto,
+        settingsState: {
+          ...state.settingsState,
+          clusteringAuto,
+        },
       };
     }
     case ActionType.SET_ANIMATION_ENABLED: {
       const { animationEnabled } = action;
       return {
         ...state,
-        animationEnabled,
+        settingsState: {
+          ...state.settingsState,
+          animationEnabled,
+        },
       };
     }
     case ActionType.SET_LOCATION_TOTALS_ENABLED: {
       const { locationTotalsEnabled } = action;
       return {
         ...state,
-        locationTotalsEnabled,
+        settingsState: {
+          ...state.settingsState,
+          locationTotalsEnabled,
+        },
       };
     }
     case ActionType.SET_ADAPTIVE_SCALES_ENABLED: {
       const { adaptiveScalesEnabled } = action;
       return {
         ...state,
-        adaptiveScalesEnabled,
+        settingsState: {
+          ...state.settingsState,
+          adaptiveScalesEnabled,
+        },
       };
     }
     case ActionType.SET_DARK_MODE: {
       const { darkMode } = action;
       return {
         ...state,
-        darkMode,
+        settingsState: {
+          ...state.settingsState,
+          darkMode,
+        },
       };
     }
     case ActionType.SET_FADE_ENABLED: {
       const { fadeEnabled } = action;
       return {
         ...state,
-        fadeEnabled,
+        settingsState: {
+          ...state.settingsState,
+          fadeEnabled,
+        },
       };
     }
     case ActionType.SET_BASE_MAP_ENABLED: {
       const { baseMapEnabled } = action;
       return {
         ...state,
-        baseMapEnabled,
+        settingsState: {
+          ...state.settingsState,
+          baseMapEnabled,
+        },
       };
     }
     case ActionType.SET_FADE_AMOUNT: {
       const { fadeAmount } = action;
       return {
         ...state,
-        fadeAmount,
+        settingsState: {
+          ...state.settingsState,
+          fadeAmount,
+        },
       };
     }
     case ActionType.SET_BASE_MAP_OPACITY: {
       const { baseMapOpacity } = action;
       return {
         ...state,
-        baseMapOpacity,
+        settingsState: {
+          ...state.settingsState,
+          baseMapOpacity,
+        },
       };
     }
     case ActionType.SET_MANUAL_CLUSTER_ZOOM: {
       const { manualClusterZoom } = action;
       return {
         ...state,
-        manualClusterZoom,
+        settingsState: {
+          ...state.settingsState,
+          manualClusterZoom,
+        },
       };
     }
     case ActionType.SET_COLOR_SCHEME: {
       const { colorSchemeKey } = action;
       return {
         ...state,
-        colorSchemeKey,
+        settingsState: {
+          ...state.settingsState,
+          colorSchemeKey,
+        },
       };
     }
   }
   return state;
 }
 
-export const reducer: Reducer<State, Action> = (state: State, action: Action) => {
-  const nextState = mainReducer(state, action);
+export const reducer /*: Reducer<State, Action>*/ = (state: FlowMapState, action: Action) => {
+  return mainReducer(state, action);
   // console.log(action.type, action);
-  return nextState;
 };
 
 export function asNumber(v: string | string[] | null | undefined): number | undefined {
@@ -435,12 +480,12 @@ export function asBoolean(v: string | string[] | null | undefined): boolean | un
   return undefined;
 }
 
-export function applyStateFromQueryString(draft: State, query: string) {
+function applyStateFromQueryString(draft: FlowMapState, query: string) {
   const params = queryString.parse(query.substr(1));
   if (typeof params.s === 'string') {
     const rows = csvParseRows(params.s);
     if (rows.length > 0) {
-      draft.selectedLocations = rows[0];
+      draft.filterState.selectedLocations = rows[0];
     }
   }
   if (typeof params.v === 'string') {
@@ -460,39 +505,46 @@ export function applyStateFromQueryString(draft: State, query: string) {
       }
     }
   }
-  draft.baseMapOpacity = asNumber(params.bo) ?? draft.baseMapOpacity;
-  draft.manualClusterZoom = asNumber(params.cz) ?? draft.manualClusterZoom;
-  draft.baseMapEnabled = asBoolean(params.b) ?? draft.baseMapEnabled;
-  draft.darkMode = asBoolean(params.d) ?? draft.darkMode;
-  draft.fadeEnabled = asBoolean(params.fe) ?? draft.fadeEnabled;
-  draft.fadeAmount = asNumber(params.f) ?? draft.fadeAmount;
-  draft.animationEnabled = asBoolean(params.a) ?? draft.animationEnabled;
-  draft.adaptiveScalesEnabled = asBoolean(params.as) ?? draft.adaptiveScalesEnabled;
-  draft.clusteringEnabled = asBoolean(params.c) ?? draft.clusteringEnabled;
-  draft.clusteringAuto = asBoolean(params.ca) ?? draft.clusteringAuto;
-  draft.locationTotalsEnabled = asBoolean(params.lt) ?? draft.locationTotalsEnabled;
+  draft.settingsState.baseMapOpacity = asNumber(params.bo) ?? draft.settingsState.baseMapOpacity;
+  draft.settingsState.manualClusterZoom =
+    asNumber(params.cz) ?? draft.settingsState.manualClusterZoom;
+  draft.settingsState.baseMapEnabled = asBoolean(params.b) ?? draft.settingsState.baseMapEnabled;
+  draft.settingsState.darkMode = asBoolean(params.d) ?? draft.settingsState.darkMode;
+  draft.settingsState.fadeEnabled = asBoolean(params.fe) ?? draft.settingsState.fadeEnabled;
+  draft.settingsState.fadeAmount = asNumber(params.f) ?? draft.settingsState.fadeAmount;
+  draft.settingsState.animationEnabled =
+    asBoolean(params.a) ?? draft.settingsState.animationEnabled;
+  draft.settingsState.adaptiveScalesEnabled =
+    asBoolean(params.as) ?? draft.settingsState.adaptiveScalesEnabled;
+  draft.settingsState.clusteringEnabled =
+    asBoolean(params.c) ?? draft.settingsState.clusteringEnabled;
+  draft.settingsState.clusteringAuto = asBoolean(params.ca) ?? draft.settingsState.clusteringAuto;
+  draft.settingsState.locationTotalsEnabled =
+    asBoolean(params.lt) ?? draft.settingsState.locationTotalsEnabled;
   if (params.lfm != null && (params.lfm as string) in LocationFilterMode) {
-    draft.locationFilterMode = params.lfm as LocationFilterMode;
+    draft.filterState.locationFilterMode = params.lfm as LocationFilterMode;
   }
   if (typeof params.t === 'string') {
     const parts = params.t.split(',');
     const t1 = timeFromQuery(parts[0]);
     const t2 = timeFromQuery(parts[1]);
     if (t1 && t2) {
-      draft.selectedTimeRange = [t1, t2];
+      draft.filterState.selectedTimeRange = [t1, t2];
     }
   }
   if (typeof params.col === 'string' && COLOR_SCHEME_KEYS.includes(params.col)) {
-    draft.colorSchemeKey = params.col;
+    draft.settingsState.colorSchemeKey = params.col;
   }
 }
 
-export function stateToQueryString(state: State) {
+export function stateToQueryString(state: FlowMapState) {
   const parts: string[] = [];
   const {
     viewport: { latitude, longitude, zoom, bearing, pitch },
-    selectedLocations,
+    filterState,
+    settingsState,
   } = state;
+  const { selectedLocations } = filterState;
   parts.push(
     `v=${csvFormatRows([
       [
@@ -504,33 +556,36 @@ export function stateToQueryString(state: State) {
       ],
     ])}`
   );
-  parts.push(`a=${state.animationEnabled ? 1 : 0}`);
-  parts.push(`as=${state.adaptiveScalesEnabled ? 1 : 0}`);
-  parts.push(`b=${state.baseMapEnabled ? 1 : 0}`);
-  parts.push(`bo=${state.baseMapOpacity}`);
-  parts.push(`c=${state.clusteringEnabled ? 1 : 0}`);
-  parts.push(`ca=${state.clusteringAuto ? 1 : 0}`);
-  if (state.manualClusterZoom != null) parts.push(`cz=${state.manualClusterZoom}`);
-  parts.push(`d=${state.darkMode ? 1 : 0}`);
-  parts.push(`fe=${state.fadeEnabled ? 1 : 0}`);
-  parts.push(`lt=${state.locationTotalsEnabled ? 1 : 0}`);
-  parts.push(`lfm=${state.locationFilterMode}`);
-  if (state.selectedTimeRange) {
-    parts.push(`t=${state.selectedTimeRange.map(timeToQuery)}`);
+  parts.push(`a=${settingsState.animationEnabled ? 1 : 0}`);
+  parts.push(`as=${settingsState.adaptiveScalesEnabled ? 1 : 0}`);
+  parts.push(`b=${settingsState.baseMapEnabled ? 1 : 0}`);
+  parts.push(`bo=${settingsState.baseMapOpacity}`);
+  parts.push(`c=${settingsState.clusteringEnabled ? 1 : 0}`);
+  parts.push(`ca=${settingsState.clusteringAuto ? 1 : 0}`);
+  if (settingsState.manualClusterZoom != null) parts.push(`cz=${settingsState.manualClusterZoom}`);
+  parts.push(`d=${settingsState.darkMode ? 1 : 0}`);
+  parts.push(`fe=${settingsState.fadeEnabled ? 1 : 0}`);
+  parts.push(`lt=${settingsState.locationTotalsEnabled ? 1 : 0}`);
+  parts.push(`lfm=${filterState.locationFilterMode}`);
+  if (filterState.selectedTimeRange) {
+    parts.push(`t=${filterState.selectedTimeRange.map(timeToQuery)}`);
   }
-  if (state.colorSchemeKey != null) {
-    parts.push(`col=${state.colorSchemeKey}`);
+  if (settingsState.colorSchemeKey != null) {
+    parts.push(`col=${settingsState.colorSchemeKey}`);
   }
-  parts.push(`f=${state.fadeAmount}`);
+  parts.push(`f=${settingsState.fadeAmount}`);
   if (selectedLocations) {
     parts.push(`s=${encodeURIComponent(csvFormatRows([selectedLocations]))}`);
   }
   return parts.join('&');
 }
 
-export function getInitialViewport(bbox: [number, number, number, number]) {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+export const DEFAULT_VIEWPORT = getInitialViewport([0, 0], [-180, -70, 180, 70]);
+
+export function getInitialViewport(
+  [width, height]: [number, number],
+  bbox: [number, number, number, number]
+) {
   const {
     center: [longitude, latitude],
     zoom,
@@ -551,41 +606,46 @@ export function getInitialViewport(bbox: [number, number, number, number]) {
   };
 }
 
-export const DEFAULT_VIEWPORT = getInitialViewport([-180, -70, 180, 70]);
-
-export function getInitialState(config: Config, queryString: string) {
-  const draft = {
-    viewport: DEFAULT_VIEWPORT,
+export function getInitialState(
+  config: Config,
+  viewport: ViewportProps,
+  queryString: string
+): FlowMapState {
+  const draft: FlowMapState = {
+    viewport,
     adjustViewportToLocations: true,
-    selectedLocations: undefined,
-    locationTotalsEnabled: true,
-    locationFilterMode: LocationFilterMode.ALL,
-    baseMapEnabled: true,
-    adaptiveScalesEnabled: true,
-    animationEnabled: parseBoolConfigProp(config[ConfigPropName.ANIMATE_FLOWS]),
-    clusteringEnabled: parseBoolConfigProp(config[ConfigPropName.CLUSTER_ON_ZOOM] || 'true'),
-    manualClusterZoom: undefined,
-    fadeEnabled: true,
-    clusteringAuto: true,
-    darkMode: parseBoolConfigProp(config[ConfigPropName.COLORS_DARK_MODE] || 'true'),
-    fadeAmount: parseNumberConfigProp(config[ConfigPropName.FADE_AMOUNT], 50),
-    baseMapOpacity: parseNumberConfigProp(config[ConfigPropName.BASE_MAP_OPACITY], 75),
-    colorSchemeKey: config[ConfigPropName.COLORS_SCHEME],
-    selectedFlowsSheet: undefined,
-    selectedTimeRange: undefined,
+    filterState: {
+      selectedLocations: undefined,
+      locationFilterMode: LocationFilterMode.ALL,
+      selectedTimeRange: undefined,
+    },
+    settingsState: {
+      locationTotalsEnabled: true,
+      baseMapEnabled: true,
+      adaptiveScalesEnabled: true,
+      animationEnabled: parseBoolConfigProp(config[ConfigPropName.ANIMATE_FLOWS]),
+      clusteringEnabled: parseBoolConfigProp(config[ConfigPropName.CLUSTER_ON_ZOOM] || 'true'),
+      manualClusterZoom: undefined,
+      fadeEnabled: true,
+      clusteringAuto: true,
+      darkMode: parseBoolConfigProp(config[ConfigPropName.COLORS_DARK_MODE] || 'true'),
+      fadeAmount: parseNumberConfigProp(config[ConfigPropName.FADE_AMOUNT], 50),
+      baseMapOpacity: parseNumberConfigProp(config[ConfigPropName.BASE_MAP_OPACITY], 75),
+      colorSchemeKey: config[ConfigPropName.COLORS_SCHEME],
+    },
   };
 
-  const bbox = config[ConfigPropName.MAP_BBOX];
-  if (bbox) {
-    const bounds = bbox
-      .split(',')
-      .map(asNumber)
-      .filter((v) => v != null) as number[];
-    if (bounds.length === 4) {
-      draft.viewport = getInitialViewport(bounds as [number, number, number, number]);
-      draft.adjustViewportToLocations = false;
-    }
-  }
+  // const bbox = config[ConfigPropName.MAP_BBOX];
+  // if (bbox) {
+  //   const bounds = bbox
+  //     .split(',')
+  //     .map(asNumber)
+  //     .filter((v) => v != null) as number[];
+  //   if (bounds.length === 4) {
+  //     draft.viewport = getInitialViewport(dims, bounds as [number, number, number, number]);
+  //     draft.adjustViewportToLocations = false;
+  //   }
+  // }
 
   if (queryString && queryString.length > 1) {
     applyStateFromQueryString(draft, queryString);

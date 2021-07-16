@@ -1,4 +1,42 @@
 import * as Cluster from '@flowmap.gl/cluster';
+import { ClusterNode } from '@flowmap.gl/cluster';
+import { TimeGranularity, TimeGranularityKey } from './time';
+
+export interface Location {
+  id: string;
+  lon: number;
+  lat: number;
+  name: string;
+}
+
+export interface LocationTotals {
+  incoming: number;
+  outgoing: number;
+  within: number;
+}
+
+export interface Flow {
+  origin: string;
+  dest: string;
+  count: number;
+  time?: Date;
+  color?: string;
+}
+
+export type FlowTotals = {
+  filteredCount: number | undefined;
+  unfilteredCount: number | undefined;
+  timeGranularityKey: TimeGranularityKey | undefined;
+  timeExtent: [Date, Date] | undefined;
+  totalCountsByTime: CountByTime[] | undefined;
+};
+
+export enum LocationFilterMode {
+  ALL = 'ALL',
+  INCOMING = 'INCOMING',
+  OUTGOING = 'OUTGOING',
+  BETWEEN = 'BETWEEN',
+}
 
 export enum ConfigPropName {
   TITLE = 'title',
@@ -25,41 +63,24 @@ export interface ConfigProp {
   value: string | undefined;
 }
 
+export type DataFormat = 'csv' | 'gsheets';
+
 export type Config = Record<string | ConfigPropName, string | undefined>;
 
 export const getFlowTime = (flow: Flow) => flow.time;
 export const getFlowMagnitude = (flow: Flow) => +flow.count || 0;
 export const getFlowOriginId = (flow: Flow) => flow.origin;
 export const getFlowDestId = (flow: Flow) => flow.dest;
-export const getLocationId = (loc: Location) => loc.id;
+export const getLocationId = (loc: Location | ClusterNode) => loc.id;
 
-export const getLocationCentroid = (location: Location | Cluster.Cluster): [number, number] =>
-  isLocationCluster(location) ? location.centroid : [location.lon, location.lat];
+export const getLocationCentroid = (location: Location | ClusterNode): [number, number] =>
+  isLocationCluster(location)
+    ? location.centroid
+    : [(location as Location).lon, (location as Location).lat];
 
-export interface Location {
-  id: string;
-  lon: number;
-  lat: number;
-  name: string;
-}
-
-export interface LocationTotals {
-  incoming: number;
-  outgoing: number;
-  within: number;
-}
-
-export function isLocationCluster(l: Location | Cluster.Cluster): l is Cluster.Cluster {
+export function isLocationCluster(l: Location | ClusterNode): l is Cluster.Cluster {
   const { zoom } = l as Cluster.Cluster;
   return zoom !== undefined;
-}
-
-export interface Flow {
-  origin: string;
-  dest: string;
-  count: number;
-  time?: Date;
-  color?: string;
 }
 
 export interface CountByTime {
@@ -102,3 +123,16 @@ export declare type AsyncState<T> =
       error?: undefined;
       value: T;
     };
+
+export interface TargetBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface TooltipProps {
+  target: TargetBounds;
+  placement?: string;
+  content: any;
+}
